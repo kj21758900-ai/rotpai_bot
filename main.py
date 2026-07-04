@@ -245,7 +245,7 @@ if __name__ == "__main__":
     # ----------------------------------------------------
     # ⚙️ [테스트 설정]: 훈련 계획만 임의로 정한 '9월 20일' 데이터로 강제 필터링
     # ----------------------------------------------------
-    simulated_test_date = datetime.date(2026, 10, 1) 
+    simulated_test_date = datetime.date(2026, 11, 29) 
     training_info = get_today_training(simulated_test_date)
     
     # 💡 [테스트 끝난 후 실제 매일 가동할 때] 아래 주석을 풀고 위 두 줄을 지우시면 됩니다.
