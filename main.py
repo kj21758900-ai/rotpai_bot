@@ -68,15 +68,19 @@ def get_pace_and_rationale(content, week_num):
 
 def get_today_training(simulated_date=None):
     """marathon_plan.md 파일에서 지정된 날짜의 훈련 정보를 파악하고 정밀 가이드를 구성합니다."""
-    file_path = "marathon_plan.md"
-    if not os.path.exists(file_path):
-        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 없습니다."
-    
     tz_local = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz_local)
     
-    # simulated_date가 명시되면 해당 날짜 데이터를 타겟팅하고, 없으면 실제 현재 날짜를 사용합니다.
+    # 파라미터가 비어있으면 실제 가동 시점의 오늘 날짜를 사용합니다.
     today_date = simulated_date if simulated_date else now.date()
+    
+    # ⚙️ [11월 29일 대회 당일 이후 예외 조건 처리]
+    if today_date >= datetime.date(2026, 11, 29):
+        return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 11월 29일 대회 이후 일정입니다. 러닝 훈련 부분은 새로 세팅해야 합니다."
+
+    file_path = "marathon_plan.md"
+    if not os.path.exists(file_path):
+        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 없습니다."
     
     patterns = [f"{today_date.month:02d}/{today_date.day:02d}", f"{today_date.month}/{today_date.day}"]
     
@@ -236,29 +240,4 @@ if __name__ == "__main__":
     LON = os.environ.get("WEATHER_LON", "100.5018")
     WEATHER_NAME = os.environ.get("WEATHER_NAME")
 
-    # 상단 시간, 실시간 날씨, 미세먼지, 환율 등은 코드가 실행되는 현재 실제 상황 데이터를 호출합니다.
-    current_time = get_current_time()
-    weather_info, umbrella_alert = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
-    air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
-    finance_info = get_financial_snapshots()
-    
-    # ----------------------------------------------------
-    # ⚙️ [테스트 설정]: 훈련 계획만 임의로 정한 '9월 20일' 데이터로 강제 필터링
-    # ----------------------------------------------------
-    simulated_test_date = datetime.date(2026, 11, 29) 
-    training_info = get_today_training(simulated_test_date)
-    
-    # 💡 [테스트 끝난 후 실제 매일 가동할 때] 아래 주석을 풀고 위 두 줄을 지우시면 됩니다.
-    # training_info = get_today_training()
-    # ----------------------------------------------------
-    
-    message = (
-        f"☀️ <b>Good Morning! 아침 브리핑 (테스트 모드)</b> ☀️\n"
-        f"📅 <b>일시:</b> {current_time}\n\n"
-        f"{training_info}\n\n"
-        f"{umbrella_alert}"
-        f"{weather_info}\n"
-        f"😷 <b>대기질(미세먼지):</b> {air_info}\n\n"
-        f"{finance_info}"
-    )
-    send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
+    # 상단 시간, 실시간 날
