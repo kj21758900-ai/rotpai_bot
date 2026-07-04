@@ -10,12 +10,11 @@ def get_current_time():
     weekday_kr = weekdays[now.weekday()]
     return now.strftime(f"%Y년 %m월 %d일 ({weekday_kr}) %H:%M")
 
-def get_hyper_local_weather(api_key, lat, lon):
+def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
     """지정한 위도(lat)와 경도(lon) 좌표를 기반으로 초정밀 동네 예보를 가져옵니다."""
     if not api_key:
         return "❌ 날씨 API 키가 설정되지 않았습니다. GitHub Secrets를 확인해주세요."
     
-    # 💡 도시명 대신 위도(lat)와 경도(lon) 좌표를 사용하여 날씨를 조회합니다.
     url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key.strip()}&units=metric&lang=kr"
     try:
         response = requests.get(url)
@@ -29,8 +28,11 @@ def get_hyper_local_weather(api_key, lat, lon):
         if not forecast_list:
             return "❌ 예보 데이터를 파싱할 수 없습니다."
         
-        # 위치 이름 (좌표 기반 동네 이름 혹은 건물 이름이 들어옵니다)
-        location_name = res.get("city", {}).get("name", "내 위치")
+        # 💡 사용자가 지정한 이름이 있으면 그것을 쓰고, 없으면 API가 주는 이름을 씁니다.
+        if custom_name and custom_name.strip():
+            location_name = custom_name.strip()
+        else:
+            location_name = res.get("city", {}).get("name", "내 위치")
         
         # 현재 상태 및 최고/최저 기온
         current_desc = forecast_list[0]["weather"][0]["description"]
@@ -58,12 +60,11 @@ def get_hyper_local_weather(api_key, lat, lon):
             elif 18 <= local_hour <= 21:
                 pop_evening = pop_percent
 
-        # 이상한 띄어쓰기(실 비 -> 실비) 가독성 수정
         if current_desc == "실 비":
             current_desc = "이슬비(실비)"
 
         weather_text = (
-            f"📍 <b>{location_name} 주변 날씨:</b> {current_desc}\n"
+            f"📍 <b>{location_name} 날씨:</b> {current_desc}\n"
             f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max_temp}°C</b> / 최저 <b>{min_temp}°C</b>)\n"
             f"💧 <b>습도:</b> {humidity}%\n"
             f"🌧️ <b>시간대별 비 올 확률:</b>\n"
@@ -95,13 +96,14 @@ if __name__ == "__main__":
     CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
     WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
     
-    # 💡 새로 사용할 위도와 경도 값 (기본값은 방콕 중심부 좌표)
     LAT = os.environ.get("WEATHER_LAT", "13.7563")
     LON = os.environ.get("WEATHER_LON", "100.5018")
+    # 💡 원하는 지역명을 설정할 수 있는 환경변수 추가
+    WEATHER_NAME = os.environ.get("WEATHER_NAME")
 
     # 데이터 수집 및 발송
     current_time = get_current_time()
-    weather_info = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON)
+    weather_info = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
     
     message = f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n📅 <b>일시:</b> {current_time}\n\n{weather_info}"
     send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
