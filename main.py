@@ -1,6 +1,21 @@
 import os
 import requests
 import xml.etree.ElementTree as ET
+import datetime  # 📅 날짜와 시간을 계산하기 위해 추가된 모듈입니다.
+
+def get_current_time():
+    """방콕 시간(UTC+7) 기준으로 현재 날짜와 시간을 한글 포맷으로 가져옵니다."""
+    # GitHub 서버는 기본적으로 영국 표준시(UTC)를 쓰기 때문에, 시차(+7시간)를 강제로 더해줍니다.
+    # 만약 한국 시간으로 바꾸고 싶다면 아래의 hours=7을 hours=9로 변경하시면 됩니다.
+    tz_local = datetime.timezone(datetime.timedelta(hours=7))
+    now = datetime.datetime.now(tz_local)
+    
+    # 요일을 한글로 예쁘게 바꾸기 위한 리스트입니다.
+    weekdays = ['월', '화', '수', '목', '금', '토', '일']
+    weekday_kr = weekdays[now.weekday()]
+    
+    # 2026년 07월 05일 (일) 07:00 같은 형태로 글자를 만들어 줍니다.
+    return now.strftime(f"%Y년 %m월 %d일 ({weekday_kr}) %H:%M")
 
 def get_weather(api_key, city="Bangkok"):
     """OpenWeatherMap API를 호출하여 현재 날씨를 가져옵니다."""
@@ -45,17 +60,21 @@ def send_telegram(token, chat_id, text):
     requests.post(url, json=payload)
 
 if __name__ == "__main__":
-    # 🔒 보안 요소를 시스템 환경변수(GitHub Secrets)로부터 안전하게 읽어옵니다.
+    # 보안 요소를 시스템 환경변수(GitHub Secrets)로부터 안전하게 읽어옵니다.
     TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
     CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
     WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-    
-    # 기본 도시 설정 (원하는 도시 영문명으로 변경 가능)
     CITY = os.environ.get("CITY", "Bangkok")
 
-    # 정보 수집 및 전송
+    # 1. 오늘 날짜/시간 생성
+    current_time = get_current_time()
+    
+    # 2. 데이터 수집
     weather_info = get_weather(WEATHER_API_KEY, CITY)
     news_info = get_news()
     
-    message = f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n\n{weather_info}\n\n{news_info}"
+    # 3. 메시지 조합 (제목 바로 밑에 📅 일시 정보를 추가했습니다.)
+    message = f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n📅 <b>일시:</b> {current_time}\n\n{weather_info}\n\n{news_info}"
+    
+    # 4. 텔레그램 발송
     send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
