@@ -72,7 +72,6 @@ def get_today_training(simulated_date=None):
     now = datetime.datetime.now(tz_local)
     
     today_date = simulated_date if simulated_date else now.date()
-    print(f"[훈련 로직] 오늘의 기준 날짜 추출: {today_date}")
     
     # ⚙️ [11월 29일 대회 당일 이후 예외 조건 처리]
     if today_date >= datetime.date(2026, 11, 29):
@@ -80,11 +79,9 @@ def get_today_training(simulated_date=None):
 
     file_path = "marathon_plan.md"
     if not os.path.exists(file_path):
-        print(f"⚠️ [경고] 현재 디렉토리에 '{file_path}' 파일이 존재하지 않습니다.")
         return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 없습니다."
     
     patterns = [f"{today_date.month:02d}/{today_date.day:02d}", f"{today_date.month}/{today_date.day}"]
-    print(f"[훈련 로직] 매칭용 날짜 패턴 생성: {patterns}")
     
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -118,7 +115,6 @@ def get_today_training(simulated_date=None):
                     found_row = clean_line
         
         if found_row:
-            print(f"[훈련 로직] 오늘 일치하는 일정 행 발견 ➡️ {found_row}")
             if "|" in found_row:
                 parts = [p.strip() for p in found_row.split("|") if p.strip()]
             else:
@@ -145,17 +141,13 @@ def get_today_training(simulated_date=None):
         if all_program_dates:
             all_program_dates.sort()
             if today_date < all_program_dates[0]:
-                print(f"[훈련 로직] 정식 프로그램 시작 전 상태입니다. (첫 시작일: {all_program_dates[0]})")
                 return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 아직 정식 훈련 프로그램 시작 전입니다. 첫 훈련은 <b>{all_program_dates[0].strftime('%m/%d')}</b>에 시작됩니다!"
             elif today_date > all_program_dates[-1]:
-                print("[훈련 로직] 모든 캘린더가 종료된 상태입니다.")
                 return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 모든 프로그램이 완료되었습니다. 대회를 완벽하게 지배하세요!"
         
-        print("[훈련 로직] 표에 일치하는 날짜가 없으므로 공식 휴식일 처리")
         return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ☀️ 오늘은 계획표상 명시된 일정이 없는 <b>공식 휴식일(Rest Day)</b>입니다. 철저한 신체 회복과 스트레칭에 전념하십시오."
             
     except Exception as e:
-        print(f"❌ [훈련 로직 에러] 파일 분석 중 오류: {str(e)}")
         return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ❌ 파일 파싱 오류: {str(e)}"
 
 def get_air_quality(api_key, lat, lon):
@@ -234,7 +226,7 @@ def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
 
 def send_telegram(token, chat_id, text):
     if not token or not chat_id:
-        print("❌ [오류] TELEGRAM_TOKEN 또는 TELEGRAM_CHAT_ID 환경 변수가 깃허브 세팅(Secrets)에 비어있거나 누락되었습니다.")
+        print("❌ [오류] 환경 변수 세팅 누락")
         return
     
     url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
@@ -247,14 +239,12 @@ def send_telegram(token, chat_id, text):
     
     try:
         res = requests.post(url, json=payload)
-        print(f"[텔레그램 전송] HTTP 응답 코드: {res.status_code}")
         if res.status_code != 200:
-            print(f"❌ [텔레그램 API 리턴 오류] 상세 이유: {res.text}")
-            print("💡 팁: 챗ID 숫자가 틀렸거나, 봇을 차단했거나, HTML 태그 문자열이 깨졌을 수 있습니다.")
+            print(f"❌ [텔레그램 API 리턴 오류] {res.text}")
         else:
             print("✅ 텔레그램 메시지가 완벽히 발송되었습니다!")
     except Exception as e:
-        print(f"❌ [텔레그램 네트워크 오류] 전송 중 완전 예외 발생: {str(e)}")
+        print(f"❌ [텔레그램 네트워크 오류] {str(e)}")
 
 if __name__ == "__main__":
     TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -264,29 +254,26 @@ if __name__ == "__main__":
     LON = os.environ.get("WEATHER_LON", "100.5018")
     WEATHER_NAME = os.environ.get("WEATHER_NAME")
 
-    print("\n=========================================")
-    print("🚀 [로그] 아침 브리핑 실행 프로세스를 시작합니다.")
-    print(f"🔍 환경 변수 주입 상태 체크 ➡️ TOKEN 보유: {bool(TELEGRAM_TOKEN)} / CHAT_ID 보유: {bool(CHAT_ID)}")
-    print("=========================================")
+    print("\n🚀 [로그] 순서가 조정된 브리핑을 생성합니다.")
 
     current_time = get_current_time()
     weather_info, umbrella_alert = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
     air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
     finance_info = get_financial_snapshots()
     
+    # 러닝 정보를 변수에 담아둔 후 맨 마지막에 배치
     training_info = get_today_training()
     
+    # 📝 [순서 변경 조정 영역]
     message = (
         f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n"
         f"📅 <b>일시:</b> {current_time}\n\n"
-        f"{training_info}\n\n"
         f"{umbrella_alert}"
         f"{weather_info}\n"
         f"😷 <b>대기질(미세먼지):</b> {air_info}\n\n"
-        f"{finance_info}"
+        f"{finance_info}\n\n"
+        f"-----------------------------------------\n\n"
+        f"{training_info}"
     )
     
     send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
-    print("=========================================")
-    print("🏁 [로그] 브리핑 실행 프로세스가 완료되었습니다.")
-    print("=========================================\n")
