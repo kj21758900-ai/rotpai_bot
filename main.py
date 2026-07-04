@@ -220,4 +220,73 @@ def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
         umbrella_reminder = "🚨 <b>[알림] 오늘 비 예보가 있습니다! 외출 시 우산을 꼭 챙기세요.</b>\n\n" if max_pop >= 60 else ""
 
         weather_text = (
-            f"📍 <b>{
+            f"📍 <b>{location_name} 날씨:</b> {current_desc}\n"
+            f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max(temps)}°C</b> / 최저 <b>{min(temps)}°C</b>)\n"
+            f"💧 <b>습도:</b> {humidity}%\n"
+            f"🌧️ <b>시간대별 비 올 확률:</b>\n"
+            f"  • 아침 (07시 전후): {pop_morning}\n"
+            f"  • 점심 (13시 전후): {pop_afternoon}\n"
+            f"  • 저녁 (19시 전후): {pop_evening}"
+        )
+        return weather_text, umbrella_reminder
+    except Exception as e:
+        return f"❌ 날씨 시스템 예외: {str(e)}", ""
+
+def send_telegram(token, chat_id, text):
+    if not token or not chat_id:
+        print("❌ [오류] TELEGRAM_TOKEN 또는 TELEGRAM_CHAT_ID 환경 변수가 깃허브 세팅(Secrets)에 비어있거나 누락되었습니다.")
+        return
+    
+    url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
+    payload = {
+        "chat_id": chat_id.strip(),
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    
+    try:
+        res = requests.post(url, json=payload)
+        print(f"[텔레그램 전송] HTTP 응답 코드: {res.status_code}")
+        if res.status_code != 200:
+            print(f"❌ [텔레그램 API 리턴 오류] 상세 이유: {res.text}")
+            print("💡 팁: 챗ID 숫자가 틀렸거나, 봇을 차단했거나, HTML 태그 문자열이 깨졌을 수 있습니다.")
+        else:
+            print("✅ 텔레그램 메시지가 완벽히 발송되었습니다!")
+    except Exception as e:
+        print(f"❌ [텔레그램 네트워크 오류] 전송 중 완전 예외 발생: {str(e)}")
+
+if __name__ == "__main__":
+    TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+    CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+    WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+    LAT = os.environ.get("WEATHER_LAT", "13.7563")
+    LON = os.environ.get("WEATHER_LON", "100.5018")
+    WEATHER_NAME = os.environ.get("WEATHER_NAME")
+
+    print("\n=========================================")
+    print("🚀 [로그] 아침 브리핑 실행 프로세스를 시작합니다.")
+    print(f"🔍 환경 변수 주입 상태 체크 ➡️ TOKEN 보유: {bool(TELEGRAM_TOKEN)} / CHAT_ID 보유: {bool(CHAT_ID)}")
+    print("=========================================")
+
+    current_time = get_current_time()
+    weather_info, umbrella_alert = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
+    air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
+    finance_info = get_financial_snapshots()
+    
+    training_info = get_today_training()
+    
+    message = (
+        f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n"
+        f"📅 <b>일시:</b> {current_time}\n\n"
+        f"{training_info}\n\n"
+        f"{umbrella_alert}"
+        f"{weather_info}\n"
+        f"😷 <b>대기질(미세먼지):</b> {air_info}\n\n"
+        f"{finance_info}"
+    )
+    
+    send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
+    print("=========================================")
+    print("🏁 [로그] 브리핑 실행 프로세스가 완료되었습니다.")
+    print("=========================================\n")
