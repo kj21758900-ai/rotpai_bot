@@ -236,16 +236,16 @@ if __name__ == "__main__":
     LON = os.environ.get("WEATHER_LON", "100.5018")
     WEATHER_NAME = os.environ.get("WEATHER_NAME")
 
-    # [실시간 연동 데이터] 상단 시간, 날씨, 미세먼지, 환율 등은 '현재 실제 상황 데이터'를 호출합니다.
+    # 상단 시간, 실시간 날씨, 미세먼지, 환율 등은 코드가 실행되는 현재 실제 상황 데이터를 호출합니다.
     current_time = get_current_time()
     weather_info, umbrella_alert = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
     air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
     finance_info = get_financial_snapshots()
     
     # ----------------------------------------------------
-    # ⚙️ [테스트 설정]: 훈련 계획만 임의로 정한 '8월 5일' 데이터로 강제 필터링
+    # ⚙️ [테스트 설정]: 훈련 계획만 임의로 정한 '9월 9일' 데이터로 강제 필터링
     # ----------------------------------------------------
-    simulated_test_date = datetime.date(2026, 8, 5) 
+    simulated_test_date = datetime.date(2026, 9, 9) 
     training_info = get_today_training(simulated_test_date)
     
     # 💡 [테스트 끝난 후 실제 매일 가동할 때] 아래 주석을 풀고 위 두 줄을 지우시면 됩니다.
