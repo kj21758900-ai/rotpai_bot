@@ -13,43 +13,82 @@ def get_current_time():
     weekday_kr = weekdays[now.weekday()]
     return now.strftime(f"%Y년 %m월 %d일 ({weekday_kr}) %H:%M")
 
+def get_pace_and_rationale(content, week_num):
+    """Section 4 및 4-1 데이터를 기반으로 구체적 페이스와 냉철한 생리학적 근거를 매칭합니다."""
+    is_early = week_num <= 9
+    paces = []
+    rationales = []
+    
+    # 1. 페이스 추출 매커니즘
+    if "회복조깅" in content or "Z1" in content:
+        paces.append("  • 회복조깅(Z1): 7:30/km 이상 (심박 115-135bpm 제한)")
+    if "이지런" in content or "Z2" in content:
+        paces.append("  • 이지런(Z2): 6:00~7:20/km (심박 135-155bpm 안정적 유지)")
+    if "템포런" in content or "Z4" in content:
+        p_range = "4:55~5:05/km" if is_early else "4:45~4:55/km"
+        paces.append(f"  • 템포런 본세트(Z4): {p_range} (심박 168-183bpm 역치 타격)")
+    if "인터벌" in content:
+        if "1000m" in content:
+            p_range = "4:15~4:25/km" if is_early else "4:05~4:15/km"
+            paces.append(f"  • 1000m 인터벌 세트: {p_range} (회복조깅 90초 고정)")
+        elif "800m" in content:
+            p_range = "4:05~4:15/km" if is_early else "3:55~4:05/km"
+            paces.append(f"  • 800m 인터벌 세트: {p_range} (회복조깅 400m 이동하며 회복)")
+    if "Z3" in content or "MP" in content:
+        paces.append("  • 마라톤 존(Z3): 페이스 동결 금지 ❌ 오직 심박 155-168bpm 제한 (목표 범위 5:00~5:30/km)")
+
+    # 2. 생리학적 근거 조립
+    if "회복조깅" in content or "Z1" in content:
+        rationales.append("  • [회복조깅]: 전날 누적된 대사 부산물을 신속히 제거하고, 부상 리스크 없이 모세혈관 밀도를 높여 신체 회복 속도를 극대화합니다.")
+    if "이지런" in content or "Z2" in content:
+        rationales.append("  • [이지런]: 심실 용적을 확장시켜 1회 박출량을 늘리고 미토콘드리아 수를 증폭함으로써, 부상 없이 강력한 유산소 기초 체력(심폐 베이스)을 다집니다.")
+    if "템포런" in content or "Z4" in content:
+        phase_str = "초반부(1-9주)" if is_early else "후반부(10-17주)"
+        rationales.append(f"  • [템포런]: {phase_str} 공식 페이스를 준수합니다. 젖산 역치(Lactate Threshold) 지점을 뒤로 밀어내어, 목표 마라톤 페이스(4:59/km)에서 피로 저항성을 극대화하기 위한 핵심 훈련입니다.")
+    if "인터벌" in content:
+        rationales.append("  • [인터벌]: 최대산소섭취량(VO2max) 영역을 강하게 자극하여 심폐 엔진 자체의 크기를 확장하고, 무산소 역량과 스피드 지속 능력을 정밀 발달시킵니다.")
+    if "Z3" in content or "MP" in content:
+        rationales.append("  • [Z3/MP]: 심박을 155-168bpm으로 묶어 에어로빅 디커플링(후반부 심박 치솟음)을 억제하고 에너지 효율성을 극대화하는 '진짜 마라톤 체력'을 이식하는 과정입니다.")
+
+    extra = ""
+    if paces:
+        extra += "\n🎯 <b>구체적 목표 페이스 가이드:</b>\n" + "\n".join(paces)
+    if rationales:
+        extra += "\n\n💡 <b>훈련 근거 및 메커니즘 (Sub-3:30 전략):</b>\n" + "\n".join(rationales)
+    return extra
+
 def get_today_training():
-    """marathon_plan.md 파일에서 오늘 자 테이블 행을 찾아 정확하게 매칭합니다."""
+    """marathon_plan.md 파일에서 오늘 날짜의 훈련 정보를 파악하고 정밀 가이드를 구성합니다."""
     file_path = "marathon_plan.md"
     if not os.path.exists(file_path):
-        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 저장소에 없습니다."
+        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 없습니다."
     
     tz_local = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz_local)
     today_date = now.date()
     
-    # 텍스트 표 내부에서 검색할 오늘 날짜 패턴들
-    patterns = [
-        f"{now.month:02d}/{now.day:02d}",
-        f"{now.month}/{now.day}",
-        f"{now.month:02d}월 {now.day:02d}일",
-        f"{now.month}월 {now.day}일"
-    ]
+    patterns = [f"{now.month:02d}/{now.day:02d}", f"{now.month}/{now.day}"]
     
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
             
         current_week_header = ""
+        week_num = 1
         found_row = None
         all_program_dates = []
         
-        # 파일 전체를 스캔하며 데이터 수집
         for line in lines:
             clean_line = line.strip()
             if not clean_line:
                 continue
                 
-            # 주차 정보를 담은 헤더 라인 기억
-            if "주차" in clean_line or clean_line.startswith("#"):
+            if "주차" in clean_line or clean_line.startswith("###"):
                 current_week_header = clean_line.replace("#", "").strip()
+                week_match = re.search(r'(\d+)주차', clean_line)
+                if week_match:
+                    week_num = int(week_match.group(1))
             
-            # 파일 내에 등장하는 모든 MM/DD 형태의 날짜 수집 (시작일/종료일 판단용)
             date_matches = re.findall(r'(\d{1,2})/(\d{1,2})', clean_line)
             for m in date_matches:
                 try:
@@ -57,12 +96,10 @@ def get_today_training():
                 except ValueError:
                     pass
             
-            # 오늘 날짜 패턴 매칭 (단, 기간 범위가 표시된 주차 헤더 행은 매칭에서 제외)
             if any(p in clean_line for p in patterns) and "~" not in clean_line:
                 found_row = clean_line
                 break
         
-        # 1차: 오늘 날짜가 표에 정확히 존재하는 경우
         if found_row:
             if "|" in found_row:
                 parts = [p.strip() for p in found_row.split("|") if p.strip()]
@@ -72,189 +109,118 @@ def get_today_training():
             if len(parts) >= 3:
                 col1, col2 = parts[0], parts[1]
                 content = " ".join(parts[2:])
-                if "/" in col2:
-                    formatted_training = f"📅 <b>{col2} ({col1})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}"
-                else:
-                    formatted_training = f"📅 <b>{col1} ({col2})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}"
+                formatted_training = f"📅 <b>{col2} ({col1})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}"
             else:
-                formatted_training = f"🏃‍♂️ <b>훈련 내용:</b> {found_row.replace('|', ' ').strip()}"
+                content = found_row.replace('|', ' ').strip()
+                formatted_training = f"🏃‍♂️ <b>훈련 내용:</b> {content}"
+            
+            # 고도화된 페이스 및 근거 결합
+            guide_and_rationale = get_pace_and_rationale(content, week_num)
             
             output = ["🏃‍♂️ <b>오늘의 마라톤 훈련 계획 & 근거</b>\n"]
             if current_week_header:
                 output.append(f"📋 <b>{current_week_header}</b>")
             output.append(formatted_training)
+            if guide_and_rationale:
+                output.append(guide_and_rationale)
             return "\n".join(output)
         
-        # 2차 예외 처리: 오늘 날짜가 표에 없는 경우 (예측 구동을 차단하고 팩트 체크)
         if all_program_dates:
             all_program_dates.sort()
-            min_date = all_program_dates[0]
-            max_date = all_program_dates[-1]
-            
-            # 오늘이 첫 훈련 시작일보다 이전인 경우
-            if today_date < min_date:
-                return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 아직 정식 훈련 프로그램 시작 전입니다. 첫 훈련은 <b>{min_date.strftime('%m/%d')}</b>에 시작됩니다! 오늘은 목표 달성을 위한 에너지를 충전하며 편안히 휴식하세요."
-            # 오늘이 프로그램 전체 종료일보다 이후인 경우
-            elif today_date > max_date:
-                return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 프로그램에 편성된 모든 훈련 일정이 완료되었습니다. 대회 승리를 응원합니다!"
+            if today_date < all_program_dates[0]:
+                return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 아직 정식 훈련 프로그램 시작 전입니다. 첫 훈련은 <b>{all_program_dates[0].strftime('%m/%d')}</b>에 시작됩니다! 오늘은 에너지를 충전하세요."
+            elif today_date > all_program_dates[-1]:
+                return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 모든 프로그램이 완료되었습니다. 대회를 완벽하게 지배하세요!"
         
-        # 프로그램 기간 내에 있지만 오늘 날짜 행이 명시되지 않은 경우 (보통 표에서 제외된 휴식일)
-        return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ☀️ 오늘은 훈련 계획표에 일정이 없는 <b>공식 휴식일(Rest Day)</b>입니다. 냉철한 레이스 준비를 위해 신체 회복과 스트레칭에 집중하세요."
+        return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ☀️ 오늘은 계획표상 명시된 일정이 없는 <b>공식 휴식일(Rest Day)</b>입니다. 철저한 신체 회복과 스트레칭에만 전념하십시오."
             
     except Exception as e:
-        return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ❌ 파일 파싱 중 오류 발생: {str(e)}"
-
-def get_running_guide(temp, humidity):
-    """현재 기온과 습도를 기반으로 체감 온도를 계산하여 러닝 가이드를 제안합니다."""
-    try:
-        e = (humidity / 100) * 6.105 * math.exp((17.27 * temp) / (237.7 + temp))
-        apparent_temp = temp + 0.33 * e - 4.0
-        
-        if apparent_temp < 26:
-            guide = "🟢 훈련하기 좋은 쾌적한 체감 온도입니다. 빌드업이나 포인트 훈련을 추천합니다!"
-        elif apparent_temp < 31:
-            guide = "🟡 체감 온도가 다소 높습니다. 훈련 중 충분히 수분을 섭취하세요."
-        elif apparent_temp < 36:
-            guide = "🟠 습도가 높아 지치기 쉽습니다. 계획보다 페이스를 10~15초 낮추고 조깅 위주로 훈련하세요."
-        else:
-            guide = "🔴 열사병 위험이 높은 무더위입니다. 가급적 실내 트레드밀 훈련을 권장합니다."
-            
-        return f"🏃‍♂️ <b>실시간 러닝 지수 (체감 {apparent_temp:.1f}°C):</b>\n  {guide}"
-    except:
-        return "🏃‍♂️ <b>실시간 러닝 지수:</b> 기상 데이터 기반 가이드 생성 실패"
+        return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ❌ 파일 파싱 오류: {str(e)}"
 
 def get_air_quality(api_key, lat, lon):
-    """현재 동네의 미세먼지(AQI) 상태를 가져옵니다."""
     url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key.strip()}"
     try:
         res = requests.get(url).json()
         aqi = res['list'][0]['main']['aqi']
-        aqi_map = {
-            1: "🟢 좋음 (야외 훈련 최적!)",
-            2: "🟡 보통 (무난한 대기질)",
-            3: "🟠 민감군 주의",
-            4: "🔴 나쁨 (야외 운동 자제)",
-            5: "💀 매우 나쁨"
-        }
+        aqi_map = {1: "🟢 좋음 (야외 훈련 최적!)", 2: "🟡 보통", 3: "🟠 민감군 주의", 4: "🔴 나쁨", 5: "💀 매우 나쁨"}
         return aqi_map.get(aqi, "⏳ 정보 확인 불가")
     except:
         return "⏳ 정보 확인 불가"
 
 def get_financial_snapshots():
-    """환율 정보(바트화, 달러화) 및 미국 나스닥 종합 지수 마감을 가져옵니다."""
-    tickers = {
-        "💵 바트/원 환율": "THBKRW=X",
-        "🇺🇸 원/달러 환율": "USDKRW=X",
-        "📈 나스닥 종합": "^IXIC"
-    }
-    
+    tickers = {"💵 바트/원 환율": "THBKRW=X", "🇺🇸 원/달러 환율": "USDKRW=X", "📈 나스닥 종합": "^IXIC"}
     fin_lines = ["📊 <b>글로벌 금융 스냅샷</b>"]
     try:
         for name, ticker_symbol in tickers.items():
             ticker = yf.Ticker(ticker_symbol)
             hist = ticker.history(period="2d")
-            if len(hist) < 2:
-                continue
-            
-            current_val = hist['Close'].iloc[-1]
-            prev_val = hist['Close'].iloc[-2]
+            if len(hist) < 2: continue
+            current_val, prev_val = hist['Close'].iloc[-1], hist['Close'].iloc[-2]
             change = current_val - prev_val
             pct = (change / prev_val) * 100
             sign = "🔺" if change > 0 else "🔻" if change < 0 else "🔹"
-            
             if "환율" in name:
                 fin_lines.append(f"  • {name}: <b>{current_val:.2f}원</b> ({sign} {abs(change):.2f}원)")
             else:
                 fin_lines.append(f"  • {name}: <b>{current_val:,.2f}</b> ({sign} {pct:.2f}%)")
         return "\n".join(fin_lines)
     except:
-        return "⏳ 금융 데이터 로딩 지연 (주말 또는 서버 일시 오류)"
+        return "⏳ 금융 데이터 로딩 지연"
 
 def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
-    """지정한 좌표 기반 초정밀 예보 및 우산 리마인더 기능을 수행합니다."""
-    if not api_key:
-        return "❌ 날씨 API 키 미설정", ""
-    
+    if not api_key: return "❌ 날씨 API 키 미설정", ""
     url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key.strip()}&units=metric&lang=kr"
     try:
         response = requests.get(url)
         res = response.json()
-        
-        if response.status_code != 200:
-            return "❌ 날씨 데이터 로드 실패", ""
+        if response.status_code != 200: return "❌ 날씨 데이터 로드 실패", ""
         
         forecast_list = res.get("list", [])[:8]
         location_name = custom_name.strip() if custom_name and custom_name.strip() else res.get("city", {}).get("name", "내 위치")
-        
         current_desc = forecast_list[0]["weather"][0]["description"]
         current_temp = forecast_list[0]["main"]["temp"]
         humidity = forecast_list[0]["main"]["humidity"]
-        
         temps = [item["main"]["temp"] for item in forecast_list]
-        max_temp = max(temps)
-        min_temp = min(temps)
         
-        timezone_offset = res["city"]["timezone"]
-        pop_morning, pop_afternoon, pop_evening = "0%", "0%", "0%"
         max_pop = 0
+        pop_morning, pop_afternoon, pop_evening = "0%", "0%", "0%"
+        timezone_offset = res["city"]["timezone"]
         
         for item in forecast_list:
-            local_timestamp = item["dt"] + timezone_offset
-            local_dt = datetime.datetime.fromtimestamp(local_timestamp, tz=datetime.timezone.utc)
-            local_hour = local_dt.hour
+            local_dt = datetime.datetime.fromtimestamp(item["dt"] + timezone_offset, datetime.timezone.utc)
             pop_val = int(item.get('pop', 0) * 100)
             pop_percent = f"{pop_val}%"
-            
-            if pop_val > max_pop:
-                max_pop = pop_val
-            
-            if 6 <= local_hour <= 9:
-                pop_morning = pop_percent
-            elif 12 <= local_hour <= 15:
-                pop_afternoon = pop_percent
-            elif 18 <= local_hour <= 21:
-                pop_evening = pop_percent
+            if pop_val > max_pop: max_pop = pop_val
+            if 6 <= local_dt.hour <= 9: pop_morning = pop_percent
+            elif 12 <= local_dt.hour <= 15: pop_afternoon = pop_percent
+            elif 18 <= local_dt.hour <= 21: pop_evening = pop_percent
 
-        if current_desc == "실 비":
-            current_desc = "이슬비(실비)"
-
-        umbrella_reminder = ""
-        if max_pop >= 60:
-            umbrella_reminder = "🚨 <b>[알림] 오늘 비 예보가 있습니다! 외출 시 우산을 꼭 챙기세요.</b>\n\n"
+        if current_desc == "실 비": current_desc = "이슬비(실비)"
+        umbrella_reminder = "🚨 <b>[알림] 오늘 비 예보가 있습니다! 외출 시 우산을 꼭 챙기세요.</b>\n\n" if max_pop >= 60 else ""
 
         weather_text = (
             f"📍 <b>{location_name} 날씨:</b> {current_desc}\n"
-            f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max_temp}°C</b> / 최저 <b>{min_temp}°C</b>)\n"
+            f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max(temps)}°C</b> / 최저 <b>{min(temps)}°C</b>)\n"
             f"💧 <b>습도:</b> {humidity}%\n"
             f"🌧️ <b>시간대별 비 올 확률:</b>\n"
             f"  • 아침 (07시 전후): {pop_morning}\n"
             f"  • 점심 (13시 전후): {pop_afternoon}\n"
-            f"  • 저녁 (19시 전후): {pop_evening}\n\n"
-            f"{get_running_guide(current_temp, humidity)}"
+            f"  • 저녁 (19시 전후): {pop_evening}"
         )
         return weather_text, umbrella_reminder
-
     except Exception as e:
         return f"❌ 날씨 시스템 예외: {str(e)}", ""
 
 def send_telegram(token, chat_id, text):
-    """결과 메시지를 HTML 포맷으로 텔레그램에 전송합니다."""
-    if not token or not chat_id:
-        return
-    url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
-    payload = {
-        "chat_id": chat_id.strip(),
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    requests.post(url, json=payload)
+    if not token or not chat_id: return
+    requests.post(f"https://api.telegram.org/bot{token.strip()}/sendMessage", json={
+        "chat_id": chat_id.strip(), "text": text, "parse_mode": "HTML", "disable_web_page_preview": True
+    })
 
 if __name__ == "__main__":
     TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
     CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
     WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-    
     LAT = os.environ.get("WEATHER_LAT", "13.7563")
     LON = os.environ.get("WEATHER_LON", "100.5018")
     WEATHER_NAME = os.environ.get("WEATHER_NAME")
@@ -274,5 +240,4 @@ if __name__ == "__main__":
         f"😷 <b>대기질(미세먼지):</b> {air_info}\n\n"
         f"{finance_info}"
     )
-    
     send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
