@@ -169,4 +169,96 @@ def get_financial_snapshots():
             current_val, prev_val = hist['Close'].iloc[-1], hist['Close'].iloc[-2]
             change = current_val - prev_val
             pct = (change / prev_val) * 100
-            sign = "
+            sign = "🔺" if change > 0 else "🔻" if change < 0 else "🔹"
+            if "환율" in name:
+                fin_lines.append(f"  • {name}: <b>{current_val:.2f}원</b> ({sign} {abs(change):.2f}원)")
+            else:
+                fin_lines.append(f"  • {name}: <b>{current_val:,.2f}</b> ({sign} {pct:.2f}%)")
+        return "\n".join(fin_lines)
+    except:
+        return "⏳ 금융 데이터 로딩 지연"
+
+def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
+    if not api_key: return "❌ 날씨 API 키 미설정", ""
+    url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key.strip()}&units=metric&lang=kr"
+    try:
+        response = requests.get(url)
+        res = response.json()
+        if response.status_code != 200: return "❌ 날씨 데이터 로드 실패", ""
+        
+        forecast_list = res.get("list", [])[:8]
+        location_name = custom_name.strip() if custom_name and custom_name.strip() else res.get("city", {}).get("name", "내 위치")
+        current_desc = forecast_list[0]["weather"][0]["description"]
+        current_temp = forecast_list[0]["main"]["temp"]
+        humidity = forecast_list[0]["main"]["humidity"]
+        temps = [item["main"]["temp"] for item in forecast_list]
+        
+        max_pop = 0
+        pop_morning, pop_afternoon, pop_evening = "0%", "0%", "0%"
+        timezone_offset = res["city"]["timezone"]
+        
+        for item in forecast_list:
+            local_dt = datetime.datetime.fromtimestamp(item["dt"] + timezone_offset, datetime.timezone.utc)
+            pop_val = int(item.get('pop', 0) * 100)
+            pop_percent = f"{pop_val}%"
+            if pop_val > max_pop: max_pop = pop_val
+            if 6 <= local_dt.hour <= 9: pop_morning = pop_percent
+            elif 12 <= local_dt.hour <= 15: pop_afternoon = pop_percent
+            elif 18 <= local_dt.hour <= 21: pop_evening = pop_percent
+
+        if current_desc == "실 비": current_desc = "이슬비(실비)"
+        umbrella_reminder = "🚨 <b>[알림] 오늘 비 예보가 있습니다! 외출 시 우산을 꼭 챙기세요.</b>\n\n" if max_pop >= 60 else ""
+
+        weather_text = (
+            f"📍 <b>{location_name} 날씨:</b> {current_desc}\n"
+            f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max(temps)}°C</b> / 최저 <b>{min(temps)}°C</b>)\n"
+            f"💧 <b>습도:</b> {humidity}%\n"
+            f"🌧️ <b>시간대별 비 올 확률:</b>\n"
+            f"  • 아침 (07시 전후): {pop_morning}\n"
+            f"  • 점심 (13시 전후): {pop_afternoon}\n"
+            f"  • 저녁 (19시 전후): {pop_evening}"
+        )
+        return weather_text, umbrella_reminder
+    except Exception as e:
+        return f"❌ 날씨 시스템 예외: {str(e)}", ""
+
+def send_telegram(token, chat_id, text):
+    if not token or not chat_id: return
+    requests.post(f"https://api.telegram.org/bot{token.strip()}/sendMessage", json={
+        "chat_id": chat_id.strip(), "text": text, "parse_mode": "HTML", "disable_web_page_preview": True
+    })
+
+if __name__ == "__main__":
+    TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+    CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+    WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+    LAT = os.environ.get("WEATHER_LAT", "13.7563")
+    LON = os.environ.get("WEATHER_LON", "100.5018")
+    WEATHER_NAME = os.environ.get("WEATHER_NAME")
+
+    # [실시간 연동 데이터] 상단 시간, 날씨, 미세먼지, 환율 등은 '현재 실제 상황 데이터'를 호출합니다.
+    current_time = get_current_time()
+    weather_info, umbrella_alert = get_hyper_local_weather(WEATHER_API_KEY, LAT, LON, WEATHER_NAME)
+    air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
+    finance_info = get_financial_snapshots()
+    
+    # ----------------------------------------------------
+    # ⚙️ [테스트 설정]: 훈련 계획만 임의로 정한 '8월 5일' 데이터로 강제 필터링
+    # ----------------------------------------------------
+    simulated_test_date = datetime.date(2026, 8, 5) 
+    training_info = get_today_training(simulated_test_date)
+    
+    # 💡 [테스트 끝난 후 실제 매일 가동할 때] 아래 주석을 풀고 위 두 줄을 지우시면 됩니다.
+    # training_info = get_today_training()
+    # ----------------------------------------------------
+    
+    message = (
+        f"☀️ <b>Good Morning! 아침 브리핑 (테스트 모드)</b> ☀️\n"
+        f"📅 <b>일시:</b> {current_time}\n\n"
+        f"{training_info}\n\n"
+        f"{umbrella_alert}"
+        f"{weather_info}\n"
+        f"😷 <b>대기질(미세먼지):</b> {air_info}\n\n"
+        f"{finance_info}"
+    )
+    send_telegram(TELEGRAM_TOKEN, CHAT_ID, message)
