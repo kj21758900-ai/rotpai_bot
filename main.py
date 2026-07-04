@@ -2,11 +2,11 @@ import os
 import requests
 import datetime
 import math
+import re
 import yfinance as yf
 
-# ⚙️ 마라톤 프로그램이 시작하는 '월요일' 날짜를 적어주세요 (주차 계산용)
-# 예: 2026년 7월 6일 월요일부터 시작하는 스케줄인 경우
-PLAN_START_DATE = datetime.date(2026, 7, 6)
+# ⚙️ 주차별 스케줄 백업용 시작일 (날짜 매칭이 실패할 경우를 대비한 안전장치)
+PLAN_START_DATE = datetime.date(2026, 6, 29)
 
 def get_current_time():
     """방콕 시간(UTC+7) 기준으로 현재 날짜와 시간을 한글 포맷으로 가져옵니다."""
@@ -17,85 +17,131 @@ def get_current_time():
     return now.strftime(f"%Y년 %m월 %d일 ({weekday_kr}) %H:%M")
 
 def get_today_training():
-    """깃허브에 업로드된 marathon_plan.md 파일에서 오늘 자 훈련 일정과 근거를 파싱합니다."""
+    """marathon_plan.md 파일에서 오늘 자 테이블 행을 찾아 이쁘게 포맷팅합니다."""
     file_path = "marathon_plan.md"
     if not os.path.exists(file_path):
-        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 저장소에 없습니다. 파일을 업로드하시면 내일 아침부터 훈련 일정을 읽어옵니다."
+        return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 저장소에 없습니다."
     
     tz_local = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz_local)
     today_date = now.date()
     
-    # 검색 키워드 1: 날짜 포맷 (예: "7월 5일" 또는 "07월 05일")
-    date_key_1 = f"{now.month}월 {now.day}일"
-    date_key_2 = f"{now.month:02d}월 {now.day:02d}일"
-    
-    # 검색 키워드 2: 주차 및 요일 포맷 (예: "1주차" -> "일요일")
-    weekdays_full = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
-    weekdays_short = ['(월)', '(화)', '(수)', '(목)', '(금)', '(토)', '(일)']
-    current_weekday_full = weekdays_full[today_date.weekday()]
-    current_weekday_short = weekdays_short[today_date.weekday()]
-    
-    days_elapsed = (today_date - PLAN_START_DATE).days
-    current_week = (days_elapsed // 7) + 1
-    week_key = f"{current_week}주차"
+    # 텍스트 표 내부에서 검색할 정밀 날짜 패턴들 (07/05, 7/5 등)
+    patterns = [
+        f"{now.month:02d}/{now.day:02d}",
+        f"{now.month}/{now.day}",
+        f"{now.month:02d}월 {now.day:02d}일",
+        f"{now.month}월 {now.day}일"
+    ]
     
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
             
-        target_lines = []
-        found = False
+        current_week_header = ""
+        found_row = None
         
-        # 1차 시도: 텍스트 안에서 직접적인 오늘 날짜(예: 7월 5일)를 찾아 파싱
-        for i, line in enumerate(lines):
-            if date_key_1 in line or date_key_2 in line:
-                found = True
-                target_lines.append(line.strip())
-                for next_line in lines[i+1:]:
-                    # 다음 날짜 헤더나 대분류(#)를 만나면 종료
-                    if ("월" in next_line and "일" in next_line) or next_line.startswith("#"):
-                        break
-                    target_lines.append(next_line.strip())
-                break
+        for line in lines:
+            clean_line = line.strip()
+            if not clean_line:
+                continue
                 
-        # 2차 시도: 날짜로 못 찾은 경우 주차별 요일(예: 1주차 -> 일요일)을 찾아 파싱
-        if not found and days_elapsed >= 0:
-            inside_correct_week = False
-            for i, line in enumerate(lines):
-                # 해당 주차 섹션 진입 확인
-                if week_key in line and ("#" in line or "**" in line):
-                    inside_correct_week = True
+            # '주차' 정보나 큰 제목(#)이 나오는 라인을 상위 헤더로 기억합니다.
+            if "주차" in clean_line or clean_line.startswith("#"):
+                current_week_header = clean_line.replace("#", "").strip()
+                continue
+            
+            # 오늘 날짜 패턴이 포함되어 있는지 확인합니다.
+            if any(p in clean_line for p in patterns):
+                # 단, 주차 헤더 자체에 기간 범위(예: 07/13~07/19)로 들어간 경우는 행 데이터가 아니므로 제외합니다.
+                if "~" in clean_line:
                     continue
-                # 다음 주차를 만나면 주차 섹션 탈출
-                if inside_correct_week and f"{current_week+1}주차" in line:
-                    break
-                    
-                if inside_correct_week:
-                    # 해당 주차 안에서 오늘 요일이 매칭되는지 확인
-                    if current_weekday_full in line or current_weekday_short in line or f"**{current_weekday_full[0]}**" in line:
-                        found = True
-                        target_lines.append(f"📅 <b>{week_key} {current_weekday_full} 훈련 계획</b>")
-                        target_lines.append(line.strip())
-                        for next_line in lines[i+1:]:
-                            # 다음 요일이나 다음 주차, 혹은 대분류를 만나면 종료
-                            if any(w in next_line for w in weekdays_full) or "주차" in next_line or next_line.startswith("#"):
-                                break
-                            target_lines.append(next_line.strip())
+                found_row = clean_line
+                break
+        
+        # 오늘 날짜가 들어간 행을 찾았을 때의 처리
+        if found_row:
+            # 마크다운 표 기호(|) 및 불필요한 공백을 제거하고 의미 있는 데이터만 분리합니다.
+            if "|" in found_row:
+                parts = [p.strip() for p in found_row.split("|") if p.strip()]
+            else:
+                parts = [p.strip() for p in re.split(r'\s{2,}', found_row) if p.strip()]
+                if len(parts) <= 1:
+                    parts = [p.strip() for p in found_row.split() if p.strip()]
+            
+            formatted_training = ""
+            if len(parts) >= 3:
+                # [요일, 날짜, 내용] 구조 분석 및 배치
+                col1, col2 = parts[0], parts[1]
+                content = " ".join(parts[2:])
+                
+                if "/" in col2 or "-" in col2:
+                    formatted_training = f"📅 <b>{col2} ({col1})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}"
+                elif "/" in col1 or "-" in col1:
+                    formatted_training = f"📅 <b>{col1} ({col2})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}"
+                else:
+                    formatted_training = f"🏃‍♂️ <b>훈련 내용:</b> {' '.join(parts)}"
+            else:
+                formatted_training = f"🏃‍♂️ <b>훈련 내용:</b> {found_row.replace('|', ' ').strip()}"
+            
+            output = ["🏃‍♂️ <b>오늘의 마라톤 훈련 계획 & 근거</b>\n"]
+            if current_week_header:
+                output.append(f"📋 <b>{current_week_header}</b>")
+            output.append(formatted_training)
+            return "\n".join(output)
+        
+        # 백업 대안: 날짜 매칭에 실패하면 현재 날짜 기반의 '주차+요일' 매칭을 시도합니다.
+        weekdays_full = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
+        weekdays_short = ['월', '화', '수', '목', '금', '토', '일']
+        current_weekday_full = weekdays_full[today_date.weekday()]
+        current_weekday_short = weekdays_short[today_date.weekday()]
+        
+        days_elapsed = (today_date - PLAN_START_DATE).days
+        current_week = (days_elapsed // 7) + 1
+        week_key = f"{current_week}주차"
+        
+        inside_correct_week = False
+        backup_row = None
+        
+        for line in lines:
+            clean_line = line.strip()
+            if week_key in clean_line and ("#" in clean_line or "주차" in clean_line):
+                inside_correct_week = True
+                current_week_header = clean_line.replace("#", "").strip()
+                continue
+            if inside_correct_week and f"{current_week+1}주차" in clean_line:
+                break
+            
+            if inside_correct_week:
+                line_cells = [c.strip() for c in clean_line.split("|") if c.strip()]
+                if line_cells:
+                    first_cell = line_cells[0]
+                    if first_cell == current_weekday_short or first_cell == current_weekday_full:
+                        backup_row = clean_line
                         break
-
-        if found:
-            # 빈 줄 정돈 및 가독성 확보
-            clean_text = "\n".join([l for l in target_lines if l])
-            return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획 & 근거</b>\n\n{clean_text}"
-        else:
-            return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일에서 오늘 자 일정({now.month}/{now.day} 또는 {week_key} {current_weekday_full})을 찾지 못했습니다. 형식을 확인해 주세요."
+        
+        if backup_row:
+            if "|" in backup_row:
+                parts = [p.strip() for p in backup_row.split("|") if p.strip()]
+            else:
+                parts = [p.strip() for p in re.split(r'\s{2,}', backup_row) if p.strip()]
+            
+            content = " ".join(parts[2:]) if len(parts) >= 3 else " ".join(parts[1:]) if len(parts) >= 2 else backup_row
+            date_display = parts[1] if (len(parts) >= 2 and ("/" in parts[1] or "-" in parts[1])) else f"{now.month}/{now.day}"
+            
+            output = ["🏃‍♂️ <b>오늘의 마라톤 훈련 계획 & 근거 (주차 매칭)</b>\n"]
+            if current_week_header:
+                output.append(f"📋 <b>{current_week_header}</b>")
+            output.append(f"📅 <b>{date_display} ({current_weekday_short})</b>\n🏃‍♂️ <b>훈련 내용:</b> {content}")
+            return "\n".join(output)
+            
+        return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일에서 오늘 자 일정({now.month}/{now.day} 또는 {week_key} {current_weekday_short})을 찾지 못했습니다. 현재 업로드된 계획표에 오늘 날짜가 포함되어 있는지 확인해 주세요."
             
     except Exception as e:
         return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ❌ 파일 파싱 중 오류 발생: {str(e)}"
 
 def get_running_guide(temp, humidity):
-    """현재 기온과 습도를 기반으로 체감 온도(Apparent Temp)를 계산하여 러닝 가이드를 제안합니다."""
+    """현재 기온과 습도를 기반으로 체감 온도를 계산하여 러닝 가이드를 제안합니다."""
     try:
         e = (humidity / 100) * 6.105 * math.exp((17.27 * temp) / (237.7 + temp))
         apparent_temp = temp + 0.33 * e - 4.0
@@ -218,8 +264,8 @@ def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
             f"💧 <b>습도:</b> {humidity}%\n"
             f"🌧️ <b>시간대별 비 올 확률:</b>\n"
             f"  • 아침 (07시 전후): {pop_morning}\n"
-            f"  • 점심 (13시 전후): ${pop_afternoon}\n"
-            f"  • 저녁 (19시 전후): ${pop_evening}\n\n"
+            f"  • 점심 (13시 전후): {pop_afternoon}\n"
+            f"  • 저녁 (19시 전후): {pop_evening}\n\n"
             f"{get_running_guide(current_temp, humidity)}"
         )
         return weather_text, umbrella_reminder
@@ -256,7 +302,7 @@ if __name__ == "__main__":
     air_info = get_air_quality(WEATHER_API_KEY, LAT, LON)
     finance_info = get_financial_snapshots()
     
-    #종합 메시지 빌드
+    # 종합 메시지 조립
     message = (
         f"☀️ <b>Good Morning! 아침 브리핑</b> ☀️\n"
         f"📅 <b>일시:</b> {current_time}\n\n"
