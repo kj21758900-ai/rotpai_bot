@@ -51,7 +51,7 @@ def get_pace_and_rationale(content, week_num):
         paces.append("  • 마라톤 존(Z3): 페이스 동결 금지 ❌ 오직 심박 155-168bpm 제한 (목표 범위 5:00~5:30/km)")
         rationales.append("  • [Z3/MP]: 심박을 155-168bpm으로 묶어 에어로빅 디커플링(후반부 심박 치솟음)을 억제하고 에너지 효율성을 극대화하는 진짜 마라톤 체력을 이식하는 과정입니다.")
 
-    # 워밍업 및 쿨다운 가이드 자동 조립 (텍포런/인터벌 구성요소 분석)
+    # 워밍업 및 쿨다운 가이드 자동 조립
     if "WU" in content:
         paces.insert(0, "  • 워밍업(WU): 6:00~7:20/km (Z2 영역에서 부드럽게 예열)")
         rationales.insert(0, "  • [WU (워밍업)]: 본세트 강도 진입 전 심박수를 점진적으로 올리고 근육 및 관절 유연성을 확보하여 급격한 심폐 피로와 부상을 방지합니다.")
@@ -71,8 +71,8 @@ def get_today_training(simulated_date=None):
     tz_local = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz_local)
     
-    # 파라미터가 비어있으면 실제 가동 시점의 오늘 날짜를 사용합니다.
     today_date = simulated_date if simulated_date else now.date()
+    print(f"[훈련 로직] 오늘의 기준 날짜 추출: {today_date}")
     
     # ⚙️ [11월 29일 대회 당일 이후 예외 조건 처리]
     if today_date >= datetime.date(2026, 11, 29):
@@ -80,9 +80,11 @@ def get_today_training(simulated_date=None):
 
     file_path = "marathon_plan.md"
     if not os.path.exists(file_path):
+        print(f"⚠️ [경고] 현재 디렉토리에 '{file_path}' 파일이 존재하지 않습니다.")
         return "🏃‍♂️ <b>오늘의 마라톤 훈련 일정:</b>\n  ℹ️ <code>marathon_plan.md</code> 파일이 없습니다."
     
     patterns = [f"{today_date.month:02d}/{today_date.day:02d}", f"{today_date.month}/{today_date.day}"]
+    print(f"[훈련 로직] 매칭용 날짜 패턴 생성: {patterns}")
     
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -112,10 +114,11 @@ def get_today_training(simulated_date=None):
                     pass
             
             if any(p in clean_line for p in patterns) and "~" not in clean_line:
-                found_row = clean_line
-                break
+                if not found_row:
+                    found_row = clean_line
         
         if found_row:
+            print(f"[훈련 로직] 오늘 일치하는 일정 행 발견 ➡️ {found_row}")
             if "|" in found_row:
                 parts = [p.strip() for p in found_row.split("|") if p.strip()]
             else:
@@ -129,7 +132,6 @@ def get_today_training(simulated_date=None):
                 content = found_row.replace('|', ' ').strip()
                 formatted_training = f"🏃‍♂️ <b>훈련 내용:</b> {content}"
             
-            # 고도화된 페이스 및 근거 결합
             guide_and_rationale = get_pace_and_rationale(content, week_num)
             
             output = ["🏃‍♂️ <b>오늘의 마라톤 훈련 계획 & 근거</b>\n"]
@@ -143,13 +145,17 @@ def get_today_training(simulated_date=None):
         if all_program_dates:
             all_program_dates.sort()
             if today_date < all_program_dates[0]:
+                print(f"[훈련 로직] 정식 프로그램 시작 전 상태입니다. (첫 시작일: {all_program_dates[0]})")
                 return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 아직 정식 훈련 프로그램 시작 전입니다. 첫 훈련은 <b>{all_program_dates[0].strftime('%m/%d')}</b>에 시작됩니다!"
             elif today_date > all_program_dates[-1]:
+                print("[훈련 로직] 모든 캘린더가 종료된 상태입니다.")
                 return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ℹ️ 모든 프로그램이 완료되었습니다. 대회를 완벽하게 지배하세요!"
         
+        print("[훈련 로직] 표에 일치하는 날짜가 없으므로 공식 휴식일 처리")
         return "🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ☀️ 오늘은 계획표상 명시된 일정이 없는 <b>공식 휴식일(Rest Day)</b>입니다. 철저한 신체 회복과 스트레칭에 전념하십시오."
             
     except Exception as e:
+        print(f"❌ [훈련 로직 에러] 파일 분석 중 오류: {str(e)}")
         return f"🏃‍♂️ <b>오늘의 마라톤 훈련 계획:</b>\n  ❌ 파일 파싱 오류: {str(e)}"
 
 def get_air_quality(api_key, lat, lon):
@@ -214,30 +220,4 @@ def get_hyper_local_weather(api_key, lat, lon, custom_name=None):
         umbrella_reminder = "🚨 <b>[알림] 오늘 비 예보가 있습니다! 외출 시 우산을 꼭 챙기세요.</b>\n\n" if max_pop >= 60 else ""
 
         weather_text = (
-            f"📍 <b>{location_name} 날씨:</b> {current_desc}\n"
-            f"🌡️ <b>기온:</b> {current_temp}°C (최고 <b>{max(temps)}°C</b> / 최저 <b>{min(temps)}°C</b>)\n"
-            f"💧 <b>습도:</b> {humidity}%\n"
-            f"🌧️ <b>시간대별 비 올 확률:</b>\n"
-            f"  • 아침 (07시 전후): {pop_morning}\n"
-            f"  • 점심 (13시 전후): {pop_afternoon}\n"
-            f"  • 저녁 (19시 전후): {pop_evening}"
-        )
-        return weather_text, umbrella_reminder
-    except Exception as e:
-        return f"❌ 날씨 시스템 예외: {str(e)}", ""
-
-def send_telegram(token, chat_id, text):
-    if not token or not chat_id: return
-    requests.post(f"https://api.telegram.org/bot{token.strip()}/sendMessage", json={
-        "chat_id": chat_id.strip(), "text": text, "parse_mode": "HTML", "disable_web_page_preview": True
-    })
-
-if __name__ == "__main__":
-    TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-    CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-    WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-    LAT = os.environ.get("WEATHER_LAT", "13.7563")
-    LON = os.environ.get("WEATHER_LON", "100.5018")
-    WEATHER_NAME = os.environ.get("WEATHER_NAME")
-
-    # 상단 시간, 실시간 날
+            f"📍 <b>{
