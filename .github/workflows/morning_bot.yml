@@ -2,7 +2,7 @@ name: Morning Weather Bot
 
 on:
   schedule:
-    - cron: '*/1 * * * *' # 💡 1분마다 무조건 실행하도록 설정
+    - cron: '55 4 * * *' # 💡 태국 시간 오전 11시 55분 (UTC 04:55)에 실행 예약
   workflow_dispatch: # 수동 실행 버튼 유지
 
 # 아래 jobs: 부분은 기존 내용 그대로 두시면 됩니다.
