@@ -1,9 +1,8 @@
 name: Morning Weather Bot
 
 on:
-  schedule:
-    - cron: '55 4 * * *' # 💡 태국 시간 오전 11시 55분 (UTC 04:55)에 실행 예약
-  workflow_dispatch: # 수동 실행 버튼 유지
+  workflow_dispatch: # 👈 이제 외부 신호(또는 수동 버튼)로만 실행됩니다.
+
 
 # 아래 jobs: 부분은 기존 내용 그대로 두시면 됩니다.
 
